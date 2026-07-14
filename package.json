@@ -1,0 +1,15 @@
+{
+  "name": "local-etude-regles",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Règles métier partagées (CGV) entre le site web et l'application mobile Local Étude — éligibilité forfait/tranche, cumul quotidien, fenêtre de réservation, seuils d'annulation.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "prepare": "tsc"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}
