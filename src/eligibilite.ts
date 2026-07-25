@@ -51,12 +51,51 @@ export function eligibiliteForfait(e: EnfantSimple, type: TypeSeance): string | 
       ? null
       : "Réservé aux forfaits Étude et Malin.";
   }
-  if (type === "Intensif" || type === "Visio") {
-    return forfait === "malin" ? null : `${type} réservé au forfait Malin.`;
+  if (type === "Visio") {
+    // Le forfait Visio (attribué au cas par cas par l'admin — n'est plus vendu
+    // au public, cf. CGV 2.1) donne accès aux séances Visio, au même titre que
+    // le Malin. Sans cette branche, un enfant 'visio' ne pouvait réserver AUCUNE
+    // séance Visio (bug corrigé le 2026-07-25).
+    return forfait === "malin" || forfait === "visio"
+      ? null
+      : "Visio réservé aux forfaits Visio et Malin.";
+  }
+  if (type === "Intensif") {
+    return forfait === "malin" ? null : "Intensif réservé au forfait Malin.";
   }
   // Étude Avancée : Malin + Tranche 3 uniquement
   if (forfait !== "malin") return "Étude Avancée réservée au forfait Malin.";
   return tranche(e.niveau) === 3
     ? null
     : "Étude Avancée réservée aux élèves de la Tranche 3 (3ème à la Terminale).";
+}
+
+// ── Dossier Malin (validation secrétariat / Unipros-URSSAF) ─────────────────
+/**
+ * Séances qui exigent un dossier Malin VALIDÉ. Pendant l'instruction du dossier,
+ * seule l'Étude de base reste ouverte ; Étude Avancée / Intensif / Visio (et les
+ * cours à domicile, gérés hors de ce mécanisme) attendent la validation finale.
+ */
+export function seanceExigeDossierMalin(type: TypeSeance): boolean {
+  return type !== "Étude";
+}
+
+/**
+ * Un enfant en forfait Malin ne peut réserver que des séances 'Étude' tant que
+ * son dossier n'est pas validé par le secrétariat (Unipros/URSSAF). Renvoie un
+ * message si la séance est bloquée pour cette raison, sinon null.
+ *
+ * Exemptés : les enfants en essai 14 j (pas de dossier), et les forfaits
+ * Étude/Visio (non concernés par le dossier Malin). Le gate ne vise donc QUE les
+ * enfants réellement en `type_forfait === "malin"`.
+ */
+export function eligibiliteDossierMalin(
+  e: EnfantSimple,
+  type: TypeSeance,
+  dossierMalinValide: boolean
+): string | null {
+  if (e.type_forfait !== "malin") return null;
+  if (!seanceExigeDossierMalin(type)) return null;
+  if (dossierMalinValide) return null;
+  return "Disponible une fois votre dossier Malin validé.";
 }

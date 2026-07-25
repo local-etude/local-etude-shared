@@ -1,6 +1,8 @@
 import {
   tranche,
   eligibiliteForfait,
+  eligibiliteDossierMalin,
+  seanceExigeDossierMalin,
   violeLimiteTrancheAge,
   regleAnnulation,
 } from "./dist/index.js";
@@ -18,16 +20,20 @@ const enfants = {
   essai: { id: "e1", prenom: "Essai", nom: "T", niveau: "5ème", type_forfait: "essai", discipline_intensif_debut: null, urgence_bloquee: false },
   etude: { id: "e2", prenom: "Etude", nom: "T", niveau: "5ème", type_forfait: "etude", discipline_intensif_debut: null, urgence_bloquee: false },
   malin: { id: "e3", prenom: "Malin", nom: "T", niveau: "Terminale", type_forfait: "malin", discipline_intensif_debut: null, urgence_bloquee: false },
+  visio: { id: "e4", prenom: "Visio", nom: "T", niveau: "5ème", type_forfait: "visio", discipline_intensif_debut: null, urgence_bloquee: false },
 };
 const types = ["Étude", "Étude Avancée", "Intensif", "Visio"];
 
 // Attendu, reconstruit indépendamment de l'implémentation à partir de l'article 2.1 CGV
 // tel que validé aujourd'hui sur le web : essai simule malin ; Étude → etude|malin ;
-// Intensif/Visio → malin uniquement ; Étude Avancée → malin + tranche 3 uniquement.
+// Intensif → malin ; Visio → malin|visio ; Étude Avancée → malin + tranche 3 uniquement.
+// Le forfait Visio (attribué au cas par cas par l'admin) ouvre les séances Visio et
+// RIEN d'autre (bug corrigé 2026-07-25 : auparavant il ne pouvait réserver aucune séance).
 const attendu = {
   essai: { "Étude": null, "Étude Avancée": "Étude Avancée réservée aux élèves de la Tranche 3 (3ème à la Terminale).", "Intensif": null, "Visio": null },
-  etude: { "Étude": null, "Étude Avancée": "Étude Avancée réservée au forfait Malin.", "Intensif": "Intensif réservé au forfait Malin.", "Visio": "Visio réservé au forfait Malin." },
+  etude: { "Étude": null, "Étude Avancée": "Étude Avancée réservée au forfait Malin.", "Intensif": "Intensif réservé au forfait Malin.", "Visio": "Visio réservé aux forfaits Visio et Malin." },
   malin: { "Étude": null, "Étude Avancée": null, "Intensif": null, "Visio": null },
+  visio: { "Étude": "Réservé aux forfaits Étude et Malin.", "Étude Avancée": "Étude Avancée réservée au forfait Malin.", "Intensif": "Intensif réservé au forfait Malin.", "Visio": null },
 };
 
 for (const key of Object.keys(enfants)) {
@@ -36,6 +42,31 @@ for (const key of Object.keys(enfants)) {
     check(`${key} (${enfants[key].niveau}, ${enfants[key].type_forfait}) × ${type}`, res, attendu[key][type]);
   }
 }
+
+console.log("\n═══ A bis. Gate dossier Malin (secrétariat) — eligibiliteDossierMalin ═══\n");
+
+// seanceExigeDossierMalin : seule l'Étude reste ouverte pendant l'instruction.
+check("seanceExigeDossierMalin('Étude')", seanceExigeDossierMalin("Étude"), false);
+check("seanceExigeDossierMalin('Étude Avancée')", seanceExigeDossierMalin("Étude Avancée"), true);
+check("seanceExigeDossierMalin('Intensif')", seanceExigeDossierMalin("Intensif"), true);
+check("seanceExigeDossierMalin('Visio')", seanceExigeDossierMalin("Visio"), true);
+
+const BLOQ = "Disponible une fois votre dossier Malin validé.";
+
+// Malin, dossier NON validé : Étude ouverte, tout le reste bloqué.
+check("malin dossier NON validé × Étude → ouvert", eligibiliteDossierMalin(enfants.malin, "Étude", false), null);
+check("malin dossier NON validé × Étude Avancée → bloqué", eligibiliteDossierMalin(enfants.malin, "Étude Avancée", false), BLOQ);
+check("malin dossier NON validé × Intensif → bloqué", eligibiliteDossierMalin(enfants.malin, "Intensif", false), BLOQ);
+check("malin dossier NON validé × Visio → bloqué", eligibiliteDossierMalin(enfants.malin, "Visio", false), BLOQ);
+
+// Malin, dossier VALIDÉ : tout ouvert (le gate ne s'applique plus).
+check("malin dossier validé × Intensif → ouvert", eligibiliteDossierMalin(enfants.malin, "Intensif", true), null);
+check("malin dossier validé × Visio → ouvert", eligibiliteDossierMalin(enfants.malin, "Visio", true), null);
+
+// Exemptés : essai (pas de dossier) et etude/visio (hors dossier Malin), même dossier non validé.
+check("essai × Intensif dossier NON validé → exempté (null)", eligibiliteDossierMalin(enfants.essai, "Intensif", false), null);
+check("etude × Étude Avancée dossier NON validé → exempté (null)", eligibiliteDossierMalin(enfants.etude, "Étude Avancée", false), null);
+check("visio × Visio dossier NON validé → exempté (null)", eligibiliteDossierMalin(enfants.visio, "Visio", false), null);
 
 console.log("\n═══ B. Cas limites de tranche — 4ème vs 3ème (violeLimiteTrancheAge) ═══\n");
 
@@ -78,7 +109,12 @@ console.log("\n═══ C. Seuils d'annulation (regleAnnulation) ═══\n");
 
 function dansXHeures(h) {
   const d = new Date(Date.now() + h * 60 * 60 * 1000);
-  const dateISO = d.toISOString().split("T")[0];
+  // Date ET heure en LOCAL (cohérent avec minutesAvantSeance qui reconstruit via
+  // new Date(y,m-1,d,h,min) local). Auparavant dateISO venait de toISOString()
+  // (UTC) alors que heure venait de getHours() (local) : dès qu'un instant
+  // traversait minuit UTC (ex. 10h en soirée locale), la séance était placée dans
+  // le passé → test non déterministe selon l'heure d'exécution.
+  const dateISO = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   const heure = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
   return { dateISO, heure };
 }
