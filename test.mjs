@@ -3,6 +3,9 @@ import {
   eligibiliteForfait,
   eligibiliteDossierMalin,
   seanceExigeDossierMalin,
+  echeanceJustifieSuspension,
+  foyerDoitEtreSuspendu,
+  foyerDoitEtreLibere,
   eligibiliteImpayes,
   violeLimiteTrancheAge,
   regleAnnulation,
@@ -170,6 +173,64 @@ check(`Séance dans 2h06 (juste au-dessus du seuil 2h) → frais`, regleAnnulati
 
 const justeEnDessousDe2h = dansXHeures(1.9);
 check(`Séance dans 1h54 (juste en dessous du seuil 2h) → impossible`, regleAnnulation(justeEnDessousDe2h.dateISO, justeEnDessousDe2h.heure), "impossible");
+
+
+// ═══ D. Suspension pour impayé (la SEULE sanction automatique du système) ═══
+// Un faux positif ici coupe l'accès d'une famille payante : la matrice est exhaustive.
+
+console.log("\n═══ D. Suspension pour impayé ═══\n");
+
+const JOUR = "2026-10-10";
+const ech = (statut, montantCentimes, graceJusquAu) => ({ statut, montantCentimes, graceJusquAu });
+const DU = 5000;
+
+// -- Matrice des statuts (grâce dépassée dans tous les cas) --
+check("statut 'echec' + grâce dépassée → SUSPEND",
+  echeanceJustifieSuspension(ech("echec", DU, "2026-10-09"), JOUR), true);
+check("statut 'a_venir' (jamais tenté) → jamais suspendu",
+  echeanceJustifieSuspension(ech("a_venir", DU, "2026-10-09"), JOUR), false);
+check("statut 'debite' (le foyer a payé) → jamais suspendu",
+  echeanceJustifieSuspension(ech("debite", DU, "2026-10-09"), JOUR), false);
+check("statut 'annule' (rétractation) → jamais suspendu",
+  echeanceJustifieSuspension(ech("annule", DU, "2026-10-09"), JOUR), false);
+
+// -- Le délai de grâce --
+check("grâce ABSENTE (jamais accordée) → pas de sanction",
+  echeanceJustifieSuspension(ech("echec", DU, null), JOUR), false);
+check("grâce encore ouverte (demain) → pas encore",
+  echeanceJustifieSuspension(ech("echec", DU, "2026-10-11"), JOUR), false);
+check("grâce expirant AUJOURD'HUI → le foyer a encore la journée",
+  echeanceJustifieSuspension(ech("echec", DU, JOUR), JOUR), false);
+check("grâce expirée d'un jour → SUSPEND",
+  echeanceJustifieSuspension(ech("echec", DU, "2026-10-09"), JOUR), true);
+
+// -- Le piège du run courant : l'échec vient d'être posé, grâce à J+7 --
+check("échec posé aujourd'hui (grâce J+7) → PAS suspendu le jour même",
+  echeanceJustifieSuspension(ech("echec", DU, "2026-10-17"), JOUR), false);
+
+// -- Montant --
+check("solde nul en échec → jamais de suspension pour 0 €",
+  echeanceJustifieSuspension(ech("echec", 0, "2026-10-09"), JOUR), false);
+
+// -- Au niveau du FOYER --
+check("foyer sans enfant Malin → jamais suspendu (rempart sans objet)",
+  foyerDoitEtreSuspendu([ech("echec", DU, "2026-10-09")], false, JOUR), false);
+check("foyer Malin, une échéance justifiée → suspendu",
+  foyerDoitEtreSuspendu([ech("echec", DU, "2026-10-09")], true, JOUR), true);
+check("foyer Malin, une seule des deux échéances justifie → suspendu",
+  foyerDoitEtreSuspendu([ech("debite", DU, null), ech("echec", DU, "2026-10-09")], true, JOUR), true);
+check("foyer Malin sans aucune échéance → pas suspendu",
+  foyerDoitEtreSuspendu([], true, JOUR), false);
+
+// -- La soupape : libération automatique (évite le blocage à vie) --
+check("suspendu mais plus aucun impayé → LIBÉRÉ",
+  foyerDoitEtreLibere(true, [ech("debite", DU, null)], true, JOUR), true);
+check("suspendu et impayé toujours là → reste suspendu",
+  foyerDoitEtreLibere(true, [ech("echec", DU, "2026-10-09")], true, JOUR), false);
+check("suspendu mais plus d'enfant Malin → LIBÉRÉ",
+  foyerDoitEtreLibere(true, [ech("echec", DU, "2026-10-09")], false, JOUR), true);
+check("pas suspendu → rien à libérer",
+  foyerDoitEtreLibere(false, [ech("debite", DU, null)], true, JOUR), false);
 
 console.log(`\n${fail === 0 ? "🎉 Tous les scénarios donnent le résultat attendu." : `❌ ${fail} scénario(s) en écart.`}\n`);
 process.exitCode = fail === 0 ? 0 : 1;
