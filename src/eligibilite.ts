@@ -72,17 +72,22 @@ export function eligibiliteForfait(e: EnfantSimple, type: TypeSeance): string | 
 
 // ── Dossier Malin (validation secrétariat / Unipros-URSSAF) ─────────────────
 /**
- * Séances qui exigent un dossier Malin VALIDÉ. Pendant l'instruction du dossier,
- * seule l'Étude de base reste ouverte ; Étude Avancée / Intensif / Visio (et les
- * cours à domicile, gérés hors de ce mécanisme) attendent la validation finale.
+ * Séances qui exigent un dossier Malin VALIDÉ (décision produit du 2026-07-28) :
+ * la validation relève du volet Unipros/URSSAF, donc elle ne retient QUE les séances
+ * financées par ce volet — Intensif, Visio et les cours à domicile (ces derniers
+ * gérés hors de ce mécanisme, par la RPC de réservation).
+ *
+ * Étude ET Étude Avancée sont payées par les frais d'agence, déjà réglés à ce stade :
+ * elles sont donc ouvertes dès le paiement, sans attendre l'instruction du dossier.
+ * Même partition que la carte de blocage des impayés (cf. eligibiliteImpayes).
  */
 export function seanceExigeDossierMalin(type: TypeSeance): boolean {
-  return type !== "Étude";
+  return type !== "Étude" && type !== "Étude Avancée";
 }
 
 /**
- * Un enfant en forfait Malin ne peut réserver que des séances 'Étude' tant que
- * son dossier n'est pas validé par le secrétariat (Unipros/URSSAF). Renvoie un
+ * Un enfant en forfait Malin ne peut réserver que l'Étude et l'Étude Avancée tant
+ * que son dossier n'est pas validé par le secrétariat (Unipros/URSSAF). Renvoie un
  * message si la séance est bloquée pour cette raison, sinon null.
  *
  * Exemptés : les enfants en essai 14 j (pas de dossier), et les forfaits

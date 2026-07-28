@@ -46,17 +46,18 @@ for (const key of Object.keys(enfants)) {
 
 console.log("\n═══ A bis. Gate dossier Malin (secrétariat) — eligibiliteDossierMalin ═══\n");
 
-// seanceExigeDossierMalin : seule l'Étude reste ouverte pendant l'instruction.
+// seanceExigeDossierMalin : Étude ET Étude Avancée (payées par les frais d'agence)
+// restent ouvertes pendant l'instruction ; seul le volet Unipros/URSSAF attend.
 check("seanceExigeDossierMalin('Étude')", seanceExigeDossierMalin("Étude"), false);
-check("seanceExigeDossierMalin('Étude Avancée')", seanceExigeDossierMalin("Étude Avancée"), true);
+check("seanceExigeDossierMalin('Étude Avancée')", seanceExigeDossierMalin("Étude Avancée"), false);
 check("seanceExigeDossierMalin('Intensif')", seanceExigeDossierMalin("Intensif"), true);
 check("seanceExigeDossierMalin('Visio')", seanceExigeDossierMalin("Visio"), true);
 
 const BLOQ = "Disponible une fois votre dossier Malin validé.";
 
-// Malin, dossier NON validé : Étude ouverte, tout le reste bloqué.
+// Malin, dossier NON validé : Étude + Étude Avancée ouvertes, Intensif/Visio bloqués.
 check("malin dossier NON validé × Étude → ouvert", eligibiliteDossierMalin(enfants.malin, "Étude", false), null);
-check("malin dossier NON validé × Étude Avancée → bloqué", eligibiliteDossierMalin(enfants.malin, "Étude Avancée", false), BLOQ);
+check("malin dossier NON validé × Étude Avancée → OUVERT", eligibiliteDossierMalin(enfants.malin, "Étude Avancée", false), null);
 check("malin dossier NON validé × Intensif → bloqué", eligibiliteDossierMalin(enfants.malin, "Intensif", false), BLOQ);
 check("malin dossier NON validé × Visio → bloqué", eligibiliteDossierMalin(enfants.malin, "Visio", false), BLOQ);
 
