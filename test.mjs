@@ -3,6 +3,7 @@ import {
   eligibiliteForfait,
   eligibiliteDossierMalin,
   seanceExigeDossierMalin,
+  eligibiliteImpayes,
   violeLimiteTrancheAge,
   regleAnnulation,
 } from "./dist/index.js";
@@ -67,6 +68,38 @@ check("malin dossier validé × Visio → ouvert", eligibiliteDossierMalin(enfan
 check("essai × Intensif dossier NON validé → exempté (null)", eligibiliteDossierMalin(enfants.essai, "Intensif", false), null);
 check("etude × Étude Avancée dossier NON validé → exempté (null)", eligibiliteDossierMalin(enfants.etude, "Étude Avancée", false), null);
 check("visio × Visio dossier NON validé → exempté (null)", eligibiliteDossierMalin(enfants.visio, "Visio", false), null);
+
+console.log("\n═══ A ter. Blocages pour impayé (frais d'agence / Unipros) — eligibiliteImpayes ═══\n");
+
+const FRAIS = "Réservation suspendue : le 2e versement de vos frais d'agence est en attente. Régularisez-le depuis votre espace.";
+const UNIPROS = "Réservation suspendue : régularisez votre mensualité auprès d'Unipros.";
+const NON = { fraisAgenceBloque: false, uniprosBloque: false };
+const FRAIS_ON = { fraisAgenceBloque: true, uniprosBloque: false };
+const UNIPROS_ON = { fraisAgenceBloque: false, uniprosBloque: true };
+
+// Aucun impayé → jamais de blocage.
+for (const type of [...types, "Domicile"]) {
+  check(`aucun impayé × ${type} → ouvert`, eligibiliteImpayes(enfants.malin, type, NON), null);
+}
+
+// Frais d'agence bloqué : tout SAUF Domicile est bloqué (Domicile reste ouvert).
+check("frais bloqué × Étude → bloqué", eligibiliteImpayes(enfants.malin, "Étude", FRAIS_ON), FRAIS);
+check("frais bloqué × Étude Avancée → bloqué", eligibiliteImpayes(enfants.malin, "Étude Avancée", FRAIS_ON), FRAIS);
+check("frais bloqué × Intensif → bloqué", eligibiliteImpayes(enfants.malin, "Intensif", FRAIS_ON), FRAIS);
+check("frais bloqué × Visio → bloqué", eligibiliteImpayes(enfants.malin, "Visio", FRAIS_ON), FRAIS);
+check("frais bloqué × Domicile → OUVERT", eligibiliteImpayes(enfants.malin, "Domicile", FRAIS_ON), null);
+
+// Unipros bloqué : Domicile + Intensif + Visio bloqués ; Étude + Étude Avancée ouverts.
+check("unipros bloqué × Domicile → bloqué", eligibiliteImpayes(enfants.malin, "Domicile", UNIPROS_ON), UNIPROS);
+check("unipros bloqué × Intensif → bloqué", eligibiliteImpayes(enfants.malin, "Intensif", UNIPROS_ON), UNIPROS);
+check("unipros bloqué × Visio → bloqué", eligibiliteImpayes(enfants.malin, "Visio", UNIPROS_ON), UNIPROS);
+check("unipros bloqué × Étude → OUVERT", eligibiliteImpayes(enfants.malin, "Étude", UNIPROS_ON), null);
+check("unipros bloqué × Étude Avancée → OUVERT", eligibiliteImpayes(enfants.malin, "Étude Avancée", UNIPROS_ON), null);
+
+// Non-Malin : jamais visé par les impayés Malin, même les deux drapeaux à true.
+const TOUS = { fraisAgenceBloque: true, uniprosBloque: true };
+check("etude (non malin) × Étude, 2 drapeaux ON → exempté", eligibiliteImpayes(enfants.etude, "Étude", TOUS), null);
+check("essai (non malin) × Intensif, 2 drapeaux ON → exempté", eligibiliteImpayes(enfants.essai, "Intensif", TOUS), null);
 
 console.log("\n═══ B. Cas limites de tranche — 4ème vs 3ème (violeLimiteTrancheAge) ═══\n");
 

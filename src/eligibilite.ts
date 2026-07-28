@@ -99,3 +99,34 @@ export function eligibiliteDossierMalin(
   if (dossierMalinValide) return null;
   return "Disponible une fois votre dossier Malin validé.";
 }
+
+// ── Blocages pour impayé (frais d'agence Stripe / mensualité Unipros) ───────
+/**
+ * Deux impayés DISTINCTS peuvent suspendre les réservations d'un enfant Malin,
+ * avec des effets différents (« carte de blocage ») :
+ *   - `fraisAgenceBloque` (2e versement Stripe des frais d'agence non réglé, passé
+ *     le délai de grâce) → bloque toutes les séances Local Étude : Étude, Étude
+ *     Avancée, Intensif, Visio. Le **Domicile reste ouvert** (financé par Unipros).
+ *   - `uniprosBloque` (mensualité Unipros SEPA impayée, signalée manuellement par
+ *     l'admin) → bloque **Domicile, Intensif, Visio**. Étude / Étude Avancée restent
+ *     ouverts.
+ *
+ * Ne vise QUE les enfants réellement `type_forfait === "malin"` (comme le gate
+ * dossier) : l'essai, l'Étude et le Visio ne paient pas de frais d'agence Malin.
+ * Miroir exact du rempart DB (trigger check_eligibilite_forfait pour les séances en
+ * agence, RPC reserver_intervention_domicile pour le Domicile).
+ */
+export function eligibiliteImpayes(
+  e: EnfantSimple,
+  type: TypeSeance | "Domicile",
+  impayes: { fraisAgenceBloque: boolean; uniprosBloque: boolean }
+): string | null {
+  if (e.type_forfait !== "malin") return null;
+  if (impayes.fraisAgenceBloque && type !== "Domicile") {
+    return "Réservation suspendue : le 2e versement de vos frais d'agence est en attente. Régularisez-le depuis votre espace.";
+  }
+  if (impayes.uniprosBloque && (type === "Domicile" || type === "Intensif" || type === "Visio")) {
+    return "Réservation suspendue : régularisez votre mensualité auprès d'Unipros.";
+  }
+  return null;
+}
