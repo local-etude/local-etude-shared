@@ -116,17 +116,29 @@ export function eligibiliteDossierMalin(
  *     l'admin) → bloque **Domicile, Intensif, Visio**. Étude / Étude Avancée restent
  *     ouverts.
  *
- * Ne vise QUE les enfants réellement `type_forfait === "malin"` (comme le gate
- * dossier) : l'essai, l'Étude et le Visio ne paient pas de frais d'agence Malin.
- * Miroir exact du rempart DB (trigger check_eligibilite_forfait pour les séances en
- * agence, RPC reserver_intervention_domicile pour le Domicile).
+ * Vise les enfants en `malin` ET CEUX EN `essai`. L'essai n'est PAS une exception :
+ * un enfant en essai bénéficie exactement des mêmes séances qu'un Malin, si bien
+ * qu'un foyer suspendu pouvait inscrire un nouvel enfant en essai et lui faire
+ * réserver de l'Intensif pendant que la dette courait. La base a fermé ce trou le
+ * 4 août 2026 (migration 20260805_essai_solidaire_des_impayes) :
+ *   IF v_forfait_reel IN ('malin', 'essai')
+ * Cette fonction en est le miroir. Tant qu'elle disait `!== "malin"`, l'écran était
+ * plus PERMISSIF que la base : l'enfant paraissait réservable et le refus tombait
+ * au clic — précisément la surprise que cet affichage existe pour supprimer.
+ *
+ * ⚠️ À la différence du GATE DOSSIER, qui reste réservé aux `malin` : un enfant en
+ * essai n'a pas de dossier Unipros à faire valider, l'y soumettre fermerait l'essai
+ * à sa propre cible. Les deux règles ne partagent donc PAS la même condition.
+ *
+ * Miroir du rempart DB : trigger check_eligibilite_forfait pour les séances en
+ * agence, RPC reserver_intervention_domicile pour le Domicile.
  */
 export function eligibiliteImpayes(
   e: EnfantSimple,
   type: TypeSeance | "Domicile",
   impayes: { fraisAgenceBloque: boolean; uniprosBloque: boolean }
 ): string | null {
-  if (e.type_forfait !== "malin") return null;
+  if (e.type_forfait !== "malin" && e.type_forfait !== "essai") return null;
   if (impayes.fraisAgenceBloque && type !== "Domicile") {
     return "Réservation suspendue : le 2e versement de vos frais d'agence est en attente. Régularisez-le depuis votre espace.";
   }
