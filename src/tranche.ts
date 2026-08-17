@@ -18,11 +18,34 @@ export const NIVEAUX = [
 ] as const;
 
 /**
+ * ── La sortie d'effectif à la rentrée ────────────────────────────────────────
+ *
+ * Quitte l'école à la rentrée tout élève dont le niveau — celui de l'année qui
+ * s'achève — figure ici. Décision Stephen du 17 août 2026 : la Première rejoint
+ * la Terminale, parce que les épreuves anticipées de Première marquent le début
+ * d'une spécialisation que le soutien généraliste ne peut pas toujours suivre
+ * au-delà. Un élève qui vient de finir sa Première n'est donc pas reconduit.
+ *
+ * ⚠️ Le critère n'est PLUS « pas de niveau suivant » (`niveauSuivant === null`) :
+ * un élève de Première A un niveau suivant et sort quand même. Les écrans et
+ * routes qui testaient l'absence de suivant consomment désormais CE prédicat —
+ * réintroduire le test par `niveauSuivant` laisserait les Première se reconduire.
+ *
+ * La règle de fratrie ne change pas : si au moins un enfant continue, le foyer
+ * est reconduit normalement, au montant plein.
+ */
+export const NIVEAUX_SORTANTS = ["1ère", "Terminale"] as const;
+
+export function quitteALaRentree(niveau: string): boolean {
+  return (NIVEAUX_SORTANTS as readonly string[]).includes(niveau);
+}
+
+/**
  * Le niveau qui suit, ou `null` pour la Terminale.
  *
- * Ce `null` n'est pas un cas d'erreur : c'est le déclencheur naturel de la
- * sortie d'effectif. Un élève qui n'a pas de niveau suivant quitte l'école — et
- * c'est la seule façon de le savoir sans stocker un âge.
+ * ⚠️ Ce `null` n'est PLUS le déclencheur de la sortie d'effectif (il l'a été du
+ * 12 au 17 août 2026) : la sortie se teste par `quitteALaRentree`, ci-dessus.
+ * Ce qui reste vrai ici : un niveau sans suivant ne peut pas monter.
  *
  * Renvoie `null` aussi pour un niveau inconnu, plutôt que de deviner. La base
  * l'interdit désormais (contrainte `enfants_niveau_valide`), mais une donnée
