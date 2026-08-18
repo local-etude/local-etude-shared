@@ -41,6 +41,30 @@ export function quitteALaRentree(niveau: string): boolean {
 }
 
 /**
+ * Le niveau seul ne suffit PAS à décider qu'un enfant sort — c'est le piège qui
+ * a produit trois bloquants à la revue du 17 août 2026 :
+ *
+ *  · un enfant déclaré « passe en 1ère » cette année porte niveau=1ère avec
+ *    niveau_cycle courant : il ENTRE en Première, il ne la quitte pas. Le
+ *    tester sur le niveau nu l'envoyait en sortie — la route répondait 409
+ *    « déjà déclaré cette année » et le foyer ne pouvait PLUS JAMAIS payer son
+ *    forfait Étude ; côté Malin, il disparaissait de la liste à reconduire et
+ *    perdait son forfait ;
+ *  · un enfant déjà sorti n'a pas à être re-traité.
+ *
+ * D'où ce prédicat COMPLET, à consommer par tous les écrans (le serveur
+ * applique les mêmes gardes, à sa façon, dans ses deux routes). Chaque
+ * plateforme fournit son cycle courant — frontière au 1er juillet, calculée à
+ * l'heure de Paris, jamais celle de l'appareil.
+ */
+export function estSortant(
+  e: { niveau: string; niveau_cycle: number | null; sorti_le: string | null },
+  cycleCourant: number
+): boolean {
+  return !e.sorti_le && e.niveau_cycle !== cycleCourant && quitteALaRentree(e.niveau);
+}
+
+/**
  * Le niveau qui suit, ou `null` pour la Terminale.
  *
  * ⚠️ Ce `null` n'est PLUS le déclencheur de la sortie d'effectif (il l'a été du
