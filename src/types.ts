@@ -16,28 +16,29 @@ export type CompteurJour = {
   intensif: number;
   visio: number;
   /**
-   * Les mêmes comptes, PLACES D'ATTENTE PARENT EXCLUES.
+   * Les mêmes comptes, mais UNIQUEMENT LES SÉANCES QUE LA FAMILLE A CHOISIES.
    *
-   * Une place d'attente parent est une ligne `reservations` confirmée comme une
-   * autre — la RPC `reserver_attente_parent` en insère une sur le créneau
-   * ADJACENT pour que l'enfant patiente en salle jusqu'à l'arrivée du parent.
-   * Ce n'est pas une séance : l'enfant n'y suit aucun cours.
+   * Deux sortes de lignes `reservations` confirmées n'en sont pas :
    *
-   * Le plafond horaire et l'interdiction Intensif+Visio continuent de les
-   * compter — comportement historique, délibérément inchangé. Seule la règle
-   * « une seule Intensif / une seule Visio par jour en Tranche 2 » les ignore :
-   * sinon un parent qui demande une place d'attente sur un créneau Visio
-   * adjacent se la verrait refuser au motif qu'il aurait « deux Visio », ce qui
-   * est faux. Le planning contient 17 paires de Visio adjacentes et 10 d'
-   * Intensif : le cas n'est pas théorique.
+   *  · la PLACE D'ATTENTE PARENT, que la RPC `reserver_attente_parent` pose sur
+   *    le créneau adjacent pour que l'enfant patiente en salle jusqu'à l'arrivée
+   *    de son parent. L'enfant n'y suit aucun cours ;
+   *  · la RETENUE disciplinaire, posée par le secrétariat. Elle est subie, pas
+   *    réservée — refuser à l'élève son Intensif habituel parce qu'il a une
+   *    retenue sur un créneau Intensif reviendrait à le punir deux fois
+   *    (décision Stephen du 21 août 2026).
+   *
+   * Le plafond horaire et l'interdiction Intensif+Visio continuent de compter
+   * ces deux-là : comportement historique, délibérément inchangé. Seule la règle
+   * « une seule Intensif / une seule Visio par jour en Tranche 2 » les ignore.
    *
    * Optionnels À DESSEIN : un client non reconstruit — l'app mobile n'a pas
    * d'OTA — ne les envoie pas, et la règle retombe alors sur les compteurs
    * bruts. Elle est donc plus stricte, jamais plus permissive, et le vrai
    * rempart reste le trigger en base.
    */
-  intensifHorsAttente?: number;
-  visioHorsAttente?: number;
+  intensifChoisies?: number;
+  visioChoisies?: number;
 };
 
 export type RegleAnnulation = "libre" | "frais" | "impossible";

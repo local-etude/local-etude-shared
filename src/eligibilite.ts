@@ -26,9 +26,9 @@ export function violeLimiteTrancheAge(
   // n'est jamais appelée pour une place d'attente parent, que la RPC pose
   // directement en base. Les compteurs « hors attente » doivent donc suivre —
   // sans cela, un enfant de Tranche 2 sans aucune Visio dans la journée aurait
-  // un `visioHorsAttente` resté à 0 et pourrait en réserver autant qu'il veut.
-  if (c.intensifHorsAttente !== undefined && type === "Intensif") c.intensifHorsAttente += 1;
-  if (c.visioHorsAttente !== undefined && type === "Visio") c.visioHorsAttente += 1;
+  // un `visioChoisies` resté à 0 et pourrait en réserver autant qu'il veut.
+  if (c.intensifChoisies !== undefined && type === "Intensif") c.intensifChoisies += 1;
+  if (c.visioChoisies !== undefined && type === "Visio") c.visioChoisies += 1;
 
   const t = tranche(niveau);
 
@@ -60,19 +60,19 @@ export function violeLimiteTrancheAge(
   // La Tranche 1 n'a pas besoin d'être citée : son plafond d'1 h par jour
   // interdit déjà tout doublon, quel qu'en soit le type.
   //
-  // ⚠️ Les PLACES D'ATTENTE PARENT sont exclues de ce décompte — voir le
-  // commentaire de `CompteurJour`. Une place d'attente est une réservation
-  // confirmée sur le créneau adjacent, mais l'enfant n'y suit aucun cours : la
-  // refuser au motif de « deux Visio » serait faux, et priverait un enfant du
-  // seul endroit où attendre son parent. Le plafond horaire, lui, continue de
+  // ⚠️ Seules comptent ici les séances que la FAMILLE A CHOISIES — voir le
+  // commentaire de `CompteurJour`. Une place d'attente parent n'est pas un cours ;
+  // une RETENUE est subie, pas réservée. Refuser sur l'une priverait l'enfant de
+  // l'endroit où attendre son parent ; refuser sur l'autre le punirait deux fois
+  // (décision Stephen du 21 août 2026). Le plafond horaire, lui, continue de
   // les compter : cette exclusion ne vaut que pour les deux règles ci-dessous.
   if (t === 2) {
-    const intensifReel = c.intensifHorsAttente ?? c.intensif;
-    const visioReel    = c.visioHorsAttente ?? c.visio;
-    if (intensifReel > 1) {
+    const intensifChoisi = c.intensifChoisies ?? c.intensif;
+    const visioChoisie    = c.visioChoisies ?? c.visio;
+    if (intensifChoisi > 1) {
       return "Une seule séance d'Intensif par jour pour ce niveau.";
     }
-    if (visioReel > 1) {
+    if (visioChoisie > 1) {
       return "Une seule séance de Visio par jour pour ce niveau.";
     }
   }

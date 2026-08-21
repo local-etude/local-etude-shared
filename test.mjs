@@ -237,23 +237,33 @@ check(
 // enfant attend, au motif qu'il aurait « deux Visio ».
 check(
   "T2 (6ème) — la Visio du jour est une PLACE D'ATTENTE → une vraie Visio reste possible",
-  violeLimiteTrancheAge("6ème", { etude: 0, etudeAvancee: 0, intensif: 0, visio: 1, visioHorsAttente: 0 }, "Visio"),
+  violeLimiteTrancheAge("6ème", { etude: 0, etudeAvancee: 0, intensif: 0, visio: 1, visioChoisies: 0 }, "Visio"),
   null
 );
 check(
   "T2 (6ème) — la Visio du jour est une VRAIE séance → la 2e est bloquée",
-  violeLimiteTrancheAge("6ème", { etude: 0, etudeAvancee: 0, intensif: 0, visio: 1, visioHorsAttente: 1 }, "Visio"),
+  violeLimiteTrancheAge("6ème", { etude: 0, etudeAvancee: 0, intensif: 0, visio: 1, visioChoisies: 1 }, "Visio"),
   "Une seule séance de Visio par jour pour ce niveau."
 );
 check(
   "T2 (6ème) — l'Intensif du jour est une PLACE D'ATTENTE → un vrai Intensif reste possible",
-  violeLimiteTrancheAge("6ème", { etude: 0, etudeAvancee: 0, intensif: 1, visio: 0, intensifHorsAttente: 0 }, "Intensif"),
+  violeLimiteTrancheAge("6ème", { etude: 0, etudeAvancee: 0, intensif: 1, visio: 0, intensifChoisies: 0 }, "Intensif"),
   null
 );
 check(
   "T2 (6ème) — 2 vraies Visio + 1 place d'attente → le plafond de 2h reprend la main",
-  violeLimiteTrancheAge("6ème", { etude: 2, etudeAvancee: 0, intensif: 0, visio: 1, visioHorsAttente: 0 }, "Visio"),
+  violeLimiteTrancheAge("6ème", { etude: 2, etudeAvancee: 0, intensif: 0, visio: 1, visioChoisies: 0 }, "Visio"),
   "Maximum 2h de séances par jour pour ce niveau."
+);
+check(
+  "T2 (6ème) — l'Intensif du jour est une RETENUE → l'Intensif habituel reste possible",
+  violeLimiteTrancheAge("6ème", { etude: 0, etudeAvancee: 0, intensif: 1, visio: 0, intensifChoisies: 0 }, "Intensif"),
+  null
+);
+check(
+  "T2 (6ème) — une retenue Visio + une vraie Visio → la 2e vraie Visio est bloquée",
+  violeLimiteTrancheAge("6ème", { etude: 0, etudeAvancee: 0, intensif: 0, visio: 2, visioChoisies: 1 }, "Visio"),
+  "Une seule séance de Visio par jour pour ce niveau."
 );
 check(
   "Client non reconstruit (champs absents) — retombe sur le compteur brut, donc STRICT",
