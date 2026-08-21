@@ -22,6 +22,14 @@ export function violeLimiteTrancheAge(
   else if (type === "Intensif") c.intensif += 1;
   else if (type === "Visio") c.visio += 1;
 
+  // La séance qu'on est en train d'ajouter est une VRAIE séance : cette fonction
+  // n'est jamais appelée pour une place d'attente parent, que la RPC pose
+  // directement en base. Les compteurs « hors attente » doivent donc suivre —
+  // sans cela, un enfant de Tranche 2 sans aucune Visio dans la journée aurait
+  // un `visioHorsAttente` resté à 0 et pourrait en réserver autant qu'il veut.
+  if (c.intensifHorsAttente !== undefined && type === "Intensif") c.intensifHorsAttente += 1;
+  if (c.visioHorsAttente !== undefined && type === "Visio") c.visioHorsAttente += 1;
+
   const t = tranche(niveau);
 
   if (c.etudeAvancee > 0 && t < 3) {
@@ -29,6 +37,44 @@ export function violeLimiteTrancheAge(
   }
   if (c.intensif > 0 && c.visio > 0) {
     return "Intensif et Visio ne peuvent pas être cumulés le même jour pour ce niveau.";
+  }
+
+  // ── TRANCHE 2 SEULEMENT : une seule Intensif, une seule Visio par jour ─────
+  // Décision Stephen du 21 août 2026, sur un défaut constaté en production.
+  //
+  // Le trou : les règles ci-dessus ne parlent que de CUMULS ENTRE TYPES. Deux
+  // séances du MÊME type tenaient donc dans le plafond de 2 h sans enfreindre
+  // aucune règle écrite. Un élève de 6ème a réservé 2 h de Visio d'affilée ; à
+  // la mesure, 5 élèves l'avaient déjà fait, en Visio ET en Intensif.
+  //
+  // ⚠️⚠️ RÈGLE DIFFÉRENCIÉE, PAS UNIFORME. La Tranche 3 (3ème → Terminale) garde
+  // le droit de doubler l'Intensif et la Visio : à ce niveau, deux heures du
+  // même type dans la journée sont un usage assumé. Seule la Tranche 2
+  // (CM1 → 4ème) est bornée. Écrire ce test hors du `t === 2` retirerait un
+  // droit existant à 13 élèves de Tranche 3, dont quatre l'utilisent déjà.
+  //
+  // ⚠️ L'Étude reste cumulable dans les DEUX tranches — décision explicite du
+  // même jour. La règle vise nommément l'Intensif et la Visio, elle ne se
+  // généralise pas en « un seul de chaque type ».
+  //
+  // La Tranche 1 n'a pas besoin d'être citée : son plafond d'1 h par jour
+  // interdit déjà tout doublon, quel qu'en soit le type.
+  //
+  // ⚠️ Les PLACES D'ATTENTE PARENT sont exclues de ce décompte — voir le
+  // commentaire de `CompteurJour`. Une place d'attente est une réservation
+  // confirmée sur le créneau adjacent, mais l'enfant n'y suit aucun cours : la
+  // refuser au motif de « deux Visio » serait faux, et priverait un enfant du
+  // seul endroit où attendre son parent. Le plafond horaire, lui, continue de
+  // les compter : cette exclusion ne vaut que pour les deux règles ci-dessous.
+  if (t === 2) {
+    const intensifReel = c.intensifHorsAttente ?? c.intensif;
+    const visioReel    = c.visioHorsAttente ?? c.visio;
+    if (intensifReel > 1) {
+      return "Une seule séance d'Intensif par jour pour ce niveau.";
+    }
+    if (visioReel > 1) {
+      return "Une seule séance de Visio par jour pour ce niveau.";
+    }
   }
 
   const total = c.etude + c.etudeAvancee + c.intensif + c.visio;

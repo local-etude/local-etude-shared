@@ -100,10 +100,24 @@ check("unipros bloqué × Visio → bloqué", eligibiliteImpayes(enfants.malin, 
 check("unipros bloqué × Étude → OUVERT", eligibiliteImpayes(enfants.malin, "Étude", UNIPROS_ON), null);
 check("unipros bloqué × Étude Avancée → OUVERT", eligibiliteImpayes(enfants.malin, "Étude Avancée", UNIPROS_ON), null);
 
-// Non-Malin : jamais visé par les impayés Malin, même les deux drapeaux à true.
+// Ni Malin ni essai : jamais visé par les impayés Malin, même les deux drapeaux à true.
 const TOUS = { fraisAgenceBloque: true, uniprosBloque: true };
-check("etude (non malin) × Étude, 2 drapeaux ON → exempté", eligibiliteImpayes(enfants.etude, "Étude", TOUS), null);
-check("essai (non malin) × Intensif, 2 drapeaux ON → exempté", eligibiliteImpayes(enfants.essai, "Intensif", TOUS), null);
+check("etude (ni malin ni essai) × Étude, 2 drapeaux ON → exempté", eligibiliteImpayes(enfants.etude, "Étude", TOUS), null);
+
+// ⚠️ ATTENTE CORRIGÉE le 2026-08-21. Ce test attendait `null` (« essai exempté »)
+// et échouait depuis la décision du 4 août 2026 : l'essai est SOLIDAIRE des
+// impayés du foyer. Un foyer suspendu pouvait sinon inscrire un enfant de plus
+// en essai et lui faire consommer les mêmes séances — c'est tout l'objet de la
+// migration 20260805_essai_solidaire_des_impayes, qui a fait passer le trigger
+// de `v_forfait_reel = 'malin'` à `IN ('malin', 'essai')`.
+// C'est bien le TEST qui était périmé : le code du paquet et la fonction
+// déployée en base disent la même chose, vérifié ligne à ligne. La suite était
+// rouge depuis deux semaines, et une suite rouge finit par ne plus être lue.
+check(
+  "essai × Intensif, frais d'agence bloqués → SUSPENDU (l'essai est solidaire, 04/08)",
+  eligibiliteImpayes(enfants.essai, "Intensif", TOUS),
+  "Réservation suspendue : le 2e versement de vos frais d'agence est en attente. Régularisez-le depuis votre espace."
+);
 
 console.log("\n═══ B. Cas limites de tranche — 4ème vs 3ème (violeLimiteTrancheAge) ═══\n");
 
@@ -140,6 +154,111 @@ check(
   "Intensif + Visio le même jour — doit être bloqué",
   violeLimiteTrancheAge("5ème", { etude: 0, etudeAvancee: 0, intensif: 1, visio: 0 }, "Visio"),
   "Intensif et Visio ne peuvent pas être cumulés le même jour pour ce niveau."
+);
+
+// ── B bis. Doublons du même type — RÈGLE DIFFÉRENCIÉE (décision du 21/08/2026) ──
+// Le cœur de ces tests n'est pas « Tranche 2 bloquée » mais « Tranche 3 NON
+// bloquée » : une règle uniforme retirerait un droit existant à 13 élèves.
+// Chaque interdiction est donc doublée de son autorisation symétrique.
+console.log("\n═══ B bis. Doublons Intensif/Visio — Tranche 2 bornée, Tranche 3 libre ═══\n");
+
+check(
+  "T2 (6ème) — 2e Visio le même jour — BLOQUÉE (le défaut trouvé en production)",
+  violeLimiteTrancheAge("6ème", { etude: 0, etudeAvancee: 0, intensif: 0, visio: 1 }, "Visio"),
+  "Une seule séance de Visio par jour pour ce niveau."
+);
+check(
+  "T2 (6ème) — 2e Intensif le même jour — BLOQUÉ",
+  violeLimiteTrancheAge("6ème", { etude: 0, etudeAvancee: 0, intensif: 1, visio: 0 }, "Intensif"),
+  "Une seule séance d'Intensif par jour pour ce niveau."
+);
+check(
+  "T2 (CM1) — borne basse de la tranche — 2e Visio BLOQUÉE",
+  violeLimiteTrancheAge("CM1", { etude: 0, etudeAvancee: 0, intensif: 0, visio: 1 }, "Visio"),
+  "Une seule séance de Visio par jour pour ce niveau."
+);
+check(
+  "T2 (4ème) — borne haute de la tranche — 2e Visio BLOQUÉE",
+  violeLimiteTrancheAge("4ème", { etude: 0, etudeAvancee: 0, intensif: 0, visio: 1 }, "Visio"),
+  "Une seule séance de Visio par jour pour ce niveau."
+);
+
+check(
+  "T3 (3ème) — borne basse de la tranche — 2e Visio AUTORISÉE",
+  violeLimiteTrancheAge("3ème", { etude: 0, etudeAvancee: 0, intensif: 0, visio: 1 }, "Visio"),
+  null
+);
+check(
+  "T3 (2nde) — 2e Visio AUTORISÉE (Yacine, Edhana : réservations existantes)",
+  violeLimiteTrancheAge("2nde", { etude: 0, etudeAvancee: 0, intensif: 0, visio: 1 }, "Visio"),
+  null
+);
+check(
+  "T3 (2nde) — 2e Intensif AUTORISÉ (Edhana : réservations existantes)",
+  violeLimiteTrancheAge("2nde", { etude: 0, etudeAvancee: 0, intensif: 1, visio: 0 }, "Intensif"),
+  null
+);
+check(
+  "T3 (Terminale) — borne haute — 2e Visio AUTORISÉE (Omrane)",
+  violeLimiteTrancheAge("Terminale", { etude: 0, etudeAvancee: 0, intensif: 0, visio: 1 }, "Visio"),
+  null
+);
+check(
+  "T3 (2nde) — 3e séance quand même bloquée par le plafond de 2h",
+  violeLimiteTrancheAge("2nde", { etude: 0, etudeAvancee: 0, intensif: 0, visio: 2 }, "Visio"),
+  "Maximum 2h de séances par jour pour ce niveau."
+);
+
+check(
+  "T2 (6ème) — Étude + Étude reste AUTORISÉE (décision explicite)",
+  violeLimiteTrancheAge("6ème", { etude: 1, etudeAvancee: 0, intensif: 0, visio: 0 }, "Étude"),
+  null
+);
+check(
+  "T2 (6ème) — Étude + Visio reste AUTORISÉE",
+  violeLimiteTrancheAge("6ème", { etude: 1, etudeAvancee: 0, intensif: 0, visio: 0 }, "Visio"),
+  null
+);
+check(
+  "T2 (6ème) — Étude + Intensif reste AUTORISÉ",
+  violeLimiteTrancheAge("6ème", { etude: 1, etudeAvancee: 0, intensif: 0, visio: 0 }, "Intensif"),
+  null
+);
+check(
+  "T1 (CE1) — 2e Visio bloquée par le plafond d'1h, pas par la règle neuve",
+  violeLimiteTrancheAge("CE1", { etude: 0, etudeAvancee: 0, intensif: 0, visio: 1 }, "Visio"),
+  "Maximum 1h de séances par jour pour ce niveau."
+);
+
+// ── Places d'attente parent : une ligne confirmée qui n'est PAS une séance ──
+// La RPC reserver_attente_parent pose une réservation sur le créneau ADJACENT.
+// Le planning contient 17 paires de Visio adjacentes et 10 d'Intensif : sans
+// cette exclusion, un parent de Tranche 2 se verrait refuser la place où son
+// enfant attend, au motif qu'il aurait « deux Visio ».
+check(
+  "T2 (6ème) — la Visio du jour est une PLACE D'ATTENTE → une vraie Visio reste possible",
+  violeLimiteTrancheAge("6ème", { etude: 0, etudeAvancee: 0, intensif: 0, visio: 1, visioHorsAttente: 0 }, "Visio"),
+  null
+);
+check(
+  "T2 (6ème) — la Visio du jour est une VRAIE séance → la 2e est bloquée",
+  violeLimiteTrancheAge("6ème", { etude: 0, etudeAvancee: 0, intensif: 0, visio: 1, visioHorsAttente: 1 }, "Visio"),
+  "Une seule séance de Visio par jour pour ce niveau."
+);
+check(
+  "T2 (6ème) — l'Intensif du jour est une PLACE D'ATTENTE → un vrai Intensif reste possible",
+  violeLimiteTrancheAge("6ème", { etude: 0, etudeAvancee: 0, intensif: 1, visio: 0, intensifHorsAttente: 0 }, "Intensif"),
+  null
+);
+check(
+  "T2 (6ème) — 2 vraies Visio + 1 place d'attente → le plafond de 2h reprend la main",
+  violeLimiteTrancheAge("6ème", { etude: 2, etudeAvancee: 0, intensif: 0, visio: 1, visioHorsAttente: 0 }, "Visio"),
+  "Maximum 2h de séances par jour pour ce niveau."
+);
+check(
+  "Client non reconstruit (champs absents) — retombe sur le compteur brut, donc STRICT",
+  violeLimiteTrancheAge("6ème", { etude: 0, etudeAvancee: 0, intensif: 0, visio: 1 }, "Visio"),
+  "Une seule séance de Visio par jour pour ce niveau."
 );
 
 console.log("\n═══ C. Seuils d'annulation (regleAnnulation) ═══\n");
