@@ -205,6 +205,63 @@ check("mardi : le lundi écoulé de la semaine courante est hors horizon",
 check("mardi : le dimanche de la semaine +1 est dans l'horizon",
   dateDansHorizon(getSemaineLimites(1).dimanche), true);
 
+// ─── E. Les deux changements d'heure, minuit compris ────────────────────────
+// Ajout du 15/11/2026 (brief « horizon 14 jours ») : le passage à l'heure d'HIVER
+// n'était testé qu'à midi (section B), et le passage à l'heure d'ÉTÉ pas du tout.
+// Une nuit de changement d'heure dure 23 ou 25 heures : un calcul fait en
+// millisecondes (« + 14 × 86 400 000 ») glisserait d'un jour au mauvais moment ;
+// celui du paquet compte en jours CIVILS de Paris et ne doit pas bouger.
+console.log("\n═══ E. Changements d'heure (été le 28 mars 2027, hiver le 25 oct. 2026) ═══\n");
+
+// ÉTÉ — dimanche 28 mars 2027, à 2 h, Paris passe de UTC+1 à UTC+2.
+// Veille au soir, encore à l'heure d'hiver : 22 h 59 UTC = 23 h 59 à Paris.
+figerHorloge("2027-03-27T22:59:00Z");
+check("27 mars 23 h 59 (Paris, hiver) : aujourd'hui", parisAujourdhuiISO(), "2027-03-27");
+check("27 mars 23 h 59 : dernier jour", getHorizonReservation().dernierJour, "2027-04-10");
+// 23 h 00 UTC = minuit à Paris : la nuit du changement d'heure commence.
+figerHorloge("2027-03-27T23:00:00Z");
+check("28 mars 00 h 00 (Paris) : aujourd'hui", parisAujourdhuiISO(), "2027-03-28");
+check("28 mars 00 h 00 : dernier jour", getHorizonReservation().dernierJour, "2027-04-11");
+// 1 h 30 UTC = 3 h 30 à Paris, juste après le saut de 2 h à 3 h.
+figerHorloge("2027-03-28T01:30:00Z");
+check("28 mars 03 h 30 (Paris, après le saut) : toujours le 28", parisAujourdhuiISO(), "2027-03-28");
+check("28 mars 03 h 30 : le 11/04 est dans l'horizon", dateDansHorizon("2027-04-11"), true);
+check("28 mars 03 h 30 : le 12/04 est hors horizon", dateDansHorizon("2027-04-12"), false);
+// Le soir même, à l'heure d'été : 21 h 59 UTC = 23 h 59, 22 h 00 UTC = minuit.
+figerHorloge("2027-03-28T21:59:00Z");
+check("28 mars 23 h 59 (Paris, été) : encore le 28", parisAujourdhuiISO(), "2027-03-28");
+figerHorloge("2027-03-28T22:00:00Z");
+check("29 mars 00 h 00 (Paris, été) : aujourd'hui", parisAujourdhuiISO(), "2027-03-29");
+check("29 mars 00 h 00 : dernier jour", getHorizonReservation().dernierJour, "2027-04-12");
+// Une fenêtre qui ENJAMBE le changement d'heure : 14 jours civils, pas 14 × 24 h.
+figerHorloge("2027-03-20T12:00:00Z");
+check("20 mars → 3 avril (la fenêtre enjambe le 28 mars)", getHorizonReservation().dernierJour, "2027-04-03");
+// La navigation reste à 2 semaines, chaque jour de la semaine du changement.
+for (const jour of ["2027-03-22", "2027-03-25", "2027-03-28"]) {
+  figerHorloge(`${jour}T12:00:00Z`);
+  check(`${jour} : offset max (semaine du passage à l'heure d'été)`, getSemaineMaxOffset(), 2);
+}
+
+// HIVER — dimanche 25 octobre 2026, à 3 h, Paris repasse de UTC+2 à UTC+1.
+// Minuit du 25 (encore à l'heure d'été) : 22 h 00 UTC le 24.
+figerHorloge("2026-10-24T22:00:00Z");
+check("25 oct. 00 h 00 (Paris, été) : aujourd'hui", parisAujourdhuiISO(), "2026-10-25");
+// 0 h 30 UTC = 2 h 30 à Paris, heure jouée DEUX fois cette nuit-là.
+figerHorloge("2026-10-25T00:30:00Z");
+check("25 oct. 02 h 30 (Paris, avant le recul) : le 25", parisAujourdhuiISO(), "2026-10-25");
+figerHorloge("2026-10-25T01:30:00Z");
+check("25 oct. 02 h 30 (Paris, après le recul) : toujours le 25", parisAujourdhuiISO(), "2026-10-25");
+// Le soir, à l'heure d'hiver : 22 h 59 UTC = 23 h 59, 23 h 00 UTC = minuit.
+figerHorloge("2026-10-25T22:59:00Z");
+check("25 oct. 23 h 59 (Paris, hiver) : encore le 25", parisAujourdhuiISO(), "2026-10-25");
+figerHorloge("2026-10-25T23:00:00Z");
+check("26 oct. 00 h 00 (Paris, hiver) : aujourd'hui", parisAujourdhuiISO(), "2026-10-26");
+check("26 oct. 00 h 00 : dernier jour", getHorizonReservation().dernierJour, "2026-11-09");
+for (const jour of ["2026-10-19", "2026-10-22", "2026-10-25"]) {
+  figerHorloge(`${jour}T12:00:00Z`);
+  check(`${jour} : offset max (semaine du passage à l'heure d'hiver)`, getSemaineMaxOffset(), 2);
+}
+
 rendreHorloge();
 
 console.log(`\n${fail === 0 ? "✅ TOUT PASSE" : `❌ ${fail} ÉCHEC(S)`}\n`);
