@@ -10,11 +10,29 @@ export function disciplineIntensifBloquee(e: EnfantSimple): boolean {
   return fin.getTime() < Date.now();
 }
 
-/** Retourne un message d'erreur si l'ajout de `type` viole l'article 6.3, sinon null. */
+export type OptionsLimiteTrancheAge = {
+  /**
+   * Vrai quand la règle `doublons_t3` est active POUR LA DATE DE LA SÉANCE
+   * (`regleActive(dateEffet, dateSeance)`, calculé par l'appelant). La Tranche 3
+   * perd alors le droit de doubler l'Intensif et la Visio, comme la Tranche 2
+   * (décisions D8 du plan § 255 et du 15/11/2026, HISTORIQUE 16.388). Absent ou
+   * faux : comportement d'avant L2, la Tranche 3 peut doubler.
+   */
+  doublonsT3Actifs?: boolean;
+};
+
+/**
+ * Retourne un message d'erreur si l'ajout de `type` viole l'article 6.3, sinon null.
+ *
+ * Jamais appelée pour une garde, une retenue ou une connexion en autonomie : ces
+ * places n'ont pas de limite quotidienne (D9) et ne sont pas des doublons. Elles
+ * peuvent en revanche figurer dans `compteur` ; voir `CompteurJour`.
+ */
 export function violeLimiteTrancheAge(
   niveau: string,
   compteur: CompteurJour,
-  type: TypeSeance
+  type: TypeSeance,
+  options: OptionsLimiteTrancheAge = {}
 ): string | null {
   const c = { ...compteur };
   if (type === "Étude") c.etude += 1;
@@ -32,14 +50,26 @@ export function violeLimiteTrancheAge(
 
   const t = tranche(niveau);
 
-  if (c.etudeAvancee > 0 && t < 3) {
+  // ── Les séances CHOISIES, pour le plafond et le cumul Intensif + Visio ─────
+  // Décision D9 du plan § 255 (16/11/2026) : la garde, Tranche 1 comprise, sort de
+  // la limite quotidienne ; la retenue est traitée comme une garde. Sans
+  // `gardesEtRetenues`, rien n'est retiré : le compte reste brut, donc strict.
+  // La séance ajoutée, elle, est toujours une vraie séance : elle est déjà dans `c`.
+  const hors = c.gardesEtRetenues;
+  const etudeSeances = c.etude - (hors?.etude ?? 0);
+  const etudeAvanceeSeances = c.etudeAvancee - (hors?.etudeAvancee ?? 0);
+  const intensifSeances = c.intensif - (hors?.intensif ?? 0);
+  const visioSeances = c.visio - (hors?.visio ?? 0);
+
+  if (etudeAvanceeSeances > 0 && t < 3) {
     return "L'Étude Avancée est réservée aux élèves de la Tranche 3 (3ème à la Terminale).";
   }
-  if (c.intensif > 0 && c.visio > 0) {
+  if (intensifSeances > 0 && visioSeances > 0) {
     return "Intensif et Visio ne peuvent pas être cumulés le même jour pour ce niveau.";
   }
 
-  // ── TRANCHE 2 SEULEMENT : une seule Intensif, une seule Visio par jour ─────
+  // ── TRANCHE 2, ET TRANCHE 3 À SA DATE D'EFFET : une seule Intensif, une seule
+  //    Visio par jour ───────────────────────────────────────────────────────────
   // Décision Stephen du 21 août 2026, sur un défaut constaté en production.
   //
   // Le trou : les règles ci-dessus ne parlent que de CUMULS ENTRE TYPES. Deux
@@ -47,15 +77,18 @@ export function violeLimiteTrancheAge(
   // aucune règle écrite. Un élève de 6ème a réservé 2 h de Visio d'affilée ; à
   // la mesure, 5 élèves l'avaient déjà fait, en Visio ET en Intensif.
   //
-  // ⚠️⚠️ RÈGLE DIFFÉRENCIÉE, PAS UNIFORME. La Tranche 3 (3ème → Terminale) garde
-  // le droit de doubler l'Intensif et la Visio : à ce niveau, deux heures du
-  // même type dans la journée sont un usage assumé. Seule la Tranche 2
-  // (CM1 → 4ème) est bornée. Écrire ce test hors du `t === 2` retirerait un
-  // droit existant à 13 élèves de Tranche 3, dont quatre l'utilisent déjà.
+  // ⚠️⚠️ RÈGLE DIFFÉRENCIÉE, ET DATÉE POUR LA TRANCHE 3. Décision du 15/11/2026
+  // (HISTORIQUE 16.388) : en Tranche 3, deux Intensif ou deux Visio le même jour
+  // sont interdits, comme en Tranche 2. Mais cette règle est PLUS STRICTE que la
+  // CGV v4.2, qui autorise « deux séances d'un même type » : elle ne s'applique
+  // qu'aux séances datées du jour d'effet `doublons_t3` ou après (entrée en
+  // vigueur de la v4.3), et l'appelant le dit par `doublonsT3Actifs`. Sans lui, la
+  // Tranche 3 garde le droit de doubler, comme depuis le 21 août.
   //
   // ⚠️ L'Étude reste cumulable dans les DEUX tranches — décision explicite du
-  // même jour. La règle vise nommément l'Intensif et la Visio, elle ne se
-  // généralise pas en « un seul de chaque type ».
+  // 21 août, confirmée par D8 (16/11/2026) : la règle vise nommément l'Intensif et
+  // la Visio, elle ne se généralise pas en « un seul de chaque type ». L'Étude
+  // Avancée suit l'Étude (HISTORIQUE 16.392).
   //
   // La Tranche 1 n'a pas besoin d'être citée : son plafond d'1 h par jour
   // interdit déjà tout doublon, quel qu'en soit le type.
@@ -66,9 +99,11 @@ export function violeLimiteTrancheAge(
   // l'endroit où attendre son parent ; refuser sur l'autre le punirait deux fois
   // (décision Stephen du 21 août 2026). Le plafond horaire, lui, continue de
   // les compter : cette exclusion ne vaut que pour les deux règles ci-dessous.
-  if (t === 2) {
-    const intensifChoisi = c.intensifChoisies ?? c.intensif;
-    const visioChoisie    = c.visioChoisies ?? c.visio;
+  // (Depuis L2, le plafond ne les compte plus non plus quand `gardesEtRetenues`
+  // est fourni — voir plus haut.)
+  if (t === 2 || (t === 3 && options.doublonsT3Actifs === true)) {
+    const intensifChoisi = c.intensifChoisies ?? intensifSeances;
+    const visioChoisie    = c.visioChoisies ?? visioSeances;
     if (intensifChoisi > 1) {
       return "Une seule séance d'Intensif par jour pour ce niveau.";
     }
@@ -77,7 +112,7 @@ export function violeLimiteTrancheAge(
     }
   }
 
-  const total = c.etude + c.etudeAvancee + c.intensif + c.visio;
+  const total = etudeSeances + etudeAvanceeSeances + intensifSeances + visioSeances;
   if (t === 1) {
     if (total > 1) return "Maximum 1h de séances par jour pour ce niveau.";
   } else {
