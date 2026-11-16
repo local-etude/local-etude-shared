@@ -349,13 +349,23 @@ for (const a of SANS_COMMUNE) for (const cp of ["77430", "77130", "77590", null]
   check(`familleEloignee(${cp}, ${JSON.stringify(a)}) → indéterminé`, familleEloignee(cp, a), null);
 }
 for (const forfait of ["malin", "essai"]) {
-  // Tranche 3 : ouverte quel que soit le code postal (et l'agence : la capacité tranche le Hors agence).
+  // Tranche 3 : ouverte quel que soit le code postal, dans une agence ; sans agence, refusée
+  // (une garde physique demande une agence, quelle que soit la tranche — décision du 16/11).
   for (const niveau of ["3ème", "Terminale"]) {
     for (const cp of [null, "77430", "77130", "77590"]) {
-      for (const agence of ["Champagne", "Montereau", "Hors agence", null]) {
-        check(`garde ${forfait} ${niveau} cp=${cp} agence=${agence} → ouverte (Tranche 3)`, eligibiliteGarde(enf(niveau, forfait), cp, agence), null);
+      for (const agence of ["Champagne", "Montereau"]) {
+        check(`garde ${forfait} ${niveau} cp=${cp} à ${agence} → ouverte (Tranche 3)`, eligibiliteGarde(enf(niveau, forfait), cp, agence), null);
+      }
+      for (const a of SANS_COMMUNE) {
+        check(`garde ${forfait} ${niveau} cp=${cp} agence=${JSON.stringify(a)} → fermée (Tranche 3, pas d'agence)`, eligibiliteGarde(enf(niveau, forfait), cp, a), G_AGENCE);
       }
     }
+  }
+  // Un test par tranche : Visio « Hors agence » et domicile (agence vide) refusent la garde.
+  for (const [t, niveau] of [[1, "CE1"], [2, "5ème"], [3, "2nde"]]) {
+    check(`Tranche ${t} (${niveau}) ${forfait}, famille éloignée, Visio Hors agence → garde fermée`, eligibiliteGarde(enf(niveau, forfait), "77590", "Hors agence"), G_AGENCE);
+    check(`Tranche ${t} (${niveau}) ${forfait}, famille éloignée, domicile (agence vide) → garde fermée`, eligibiliteGarde(enf(niveau, forfait), "77590", null), G_AGENCE);
+    check(`Tranche ${t} (${niveau}) ${forfait}, famille éloignée, Champagne → garde ouverte`, eligibiliteGarde(enf(niveau, forfait), "77590", "Champagne"), null);
   }
   for (const niveau of ["CP", "CE2", "CM1", "4ème"]) {
     check(`garde ${forfait} ${niveau} 77590 à Champagne → ouverte`, eligibiliteGarde(enf(niveau, forfait), "77590", "Champagne"), null);
@@ -397,6 +407,8 @@ check("T1 sans code postal → pas de signal", signalGardePossible(enf("CE1", "m
 check("T1 famille éloignée sur une Visio Hors agence → pas de signal", signalGardePossible(enf("CE1", "malin"), "77590", "Hors agence", OK_CTX), false);
 check("T1 famille éloignée, agence inconnue → pas de signal", signalGardePossible(enf("CE1", "malin"), "77590", null, OK_CTX), false);
 check("forfait Étude T3 → pas de signal", signalGardePossible(enf("2nde", "etude"), "77590", "Champagne", OK_CTX), false);
+check("T3 sur une Visio Hors agence → pas de signal (pas d'agence)", signalGardePossible(enf("2nde", "malin"), "77430", "Hors agence", OK_CTX), false);
+check("T3 agence vide → pas de signal", signalGardePossible(enf("Terminale", "essai"), "77590", null, OK_CTX), false);
 
 // ─── H. eligibiliteAutonomieVisio (D10) ────────────────────────────────────
 section("H. eligibiliteAutonomieVisio");
@@ -410,6 +422,12 @@ check("autonomie T3 forfait Étude → fermée (pas de Visio)", eligibiliteAuton
 check("autonomie T3 forfait expiré → fermée", eligibiliteAutonomieVisio(enf("3ème", "expire"), AV_OK), "Visio réservé aux forfaits Visio et Malin.");
 check("autonomie sans Visio de l'élève → fermée", eligibiliteAutonomieVisio(enf("3ème", "visio"), { ...AV_OK, visioDeLEnfantConfirmee: false }), "La connexion en autonomie accompagne une séance de Visio de l'élève.");
 check("autonomie sans Visio voisine → fermée", eligibiliteAutonomieVisio(enf("3ème", "visio"), { ...AV_OK, visioVoisineExiste: false }), "Aucune séance de Visio juste avant ou juste après celle de l'élève.");
+// L'autonomie n'est pas une garde : la règle « une garde physique demande une agence » ne la touche pas.
+for (const forfait of ["malin", "essai"]) {
+  check(`T3 ${forfait} sur une Visio Hors agence : garde fermée…`, eligibiliteGarde(enf("1ère", forfait), "77590", "Hors agence"), G_AGENCE);
+  check(`T3 ${forfait} sur une Visio Hors agence : …autonomie ouverte`, eligibiliteAutonomieVisio(enf("1ère", forfait), AV_OK), null);
+}
+check("T3 forfait Visio, Visio Hors agence : autonomie ouverte (pas de garde au forfait Visio)", eligibiliteAutonomieVisio(enf("1ère", "visio"), AV_OK), null);
 
 // ─── I. eligibiliteUrgence (D11, D12) ──────────────────────────────────────
 section("I. eligibiliteUrgence");

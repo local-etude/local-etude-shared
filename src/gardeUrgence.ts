@@ -57,15 +57,17 @@ export function familleEloignee(
  *
  *  · Forfait : Malin, ou essai (D6 : la garde est ouverte aux enfants en essai).
  *    Gratuite et incluse dans Malin ; aucun autre forfait n'y ouvre droit.
+ *  · Agence : la séance se tient à Champagne ou à Montereau, quelle que soit la
+ *    tranche — une garde physique demande une agence (décision du 16/11/2026) ;
+ *    une Visio « Hors agence » ou une séance à domicile la refusent.
  *  · Tranche 3 : quel que soit le code postal (la garde remplace la deuxième
  *    séance, D7 et décision du 15/11).
  *  · Tranches 1 et 2 : seulement si la famille est éloignée pour l'agence de la
- *    séance (`familleEloignee`, D7 corrigée le 16/11) ; la séance doit donc se
- *    tenir à Champagne ou à Montereau.
+ *    séance (`familleEloignee`, D7 corrigée le 16/11).
  *
- * N'examine ni la séance voisine, ni la capacité de garde (une Visio « Hors
- * agence » a 0 place) : voir `signalGardePossible` pour l'affichage sur une
- * carte complète.
+ * N'examine ni la séance voisine, ni la capacité de garde : voir
+ * `signalGardePossible` pour l'affichage sur une carte complète. La connexion en
+ * autonomie sur une Visio n'est pas une garde : `eligibiliteAutonomieVisio`.
  */
 export function eligibiliteGarde(
   e: EnfantSimple,
@@ -75,10 +77,12 @@ export function eligibiliteGarde(
   if (e.type_forfait !== "malin" && e.type_forfait !== "essai") {
     return "La garde est réservée au forfait Malin et à l'essai.";
   }
-  if (tranche(e.niveau) === 3) return null;
+  // Une garde physique demande une agence, quelle que soit la tranche (décision
+  // du 16/11/2026). La connexion en autonomie, elle, suit `eligibiliteAutonomieVisio`.
   if (codePostalAgence(agenceSeance) === null) {
     return "La garde se tient dans une agence, à Champagne-sur-Seine ou à Montereau-Fault-Yonne.";
   }
+  if (tranche(e.niveau) === 3) return null;
   const eloignee = familleEloignee(codePostal, agenceSeance);
   if (eloignee === null) {
     return "Renseignez votre code postal pour savoir si la garde vous est ouverte.";
