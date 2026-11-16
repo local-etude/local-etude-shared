@@ -54,7 +54,8 @@ import {
   regleAnnulation,
   regleAnnulationPlace,
   violeLimiteTrancheAge,
-  CODES_POSTAUX_AGENCES,
+  CODE_POSTAL_AGENCE,
+  codePostalAgence,
   familleEloignee,
   eligibiliteGarde,
   signalGardePossible,
@@ -314,50 +315,88 @@ check("T2 (4ème) — garde sur un créneau d'Étude Avancée + vraie Étude →
 check("T2 (4ème) — Étude Avancée réservée → toujours refusée",
   violeLimiteTrancheAge("4ème", { ...Z, gardesEtRetenues: Z }, "Étude Avancée"), "L'Étude Avancée est réservée aux élèves de la Tranche 3 (3ème à la Terminale).");
 
-// ─── F. eligibiliteGarde (D6, D7) ──────────────────────────────────────────
+// ─── F. eligibiliteGarde (D6, D7 corrigée le 16/11 : agence DE LA SÉANCE) ───
 section("F. eligibiliteGarde");
 const enf = (niveau, type_forfait) => ({ id: "x", prenom: "P", nom: "N", niveau, type_forfait, discipline_intensif_debut: null, urgence_bloquee: false });
 const G_FORFAIT = "La garde est réservée au forfait Malin et à l'essai.";
 const G_CP = "Renseignez votre code postal pour savoir si la garde vous est ouverte.";
-const G_PROCHE = "La garde est réservée aux élèves de la 3ème à la Terminale et aux familles qui n'habitent pas la commune d'une agence.";
-check("codes postaux des agences", CODES_POSTAUX_AGENCES, ["77430", "77130"]);
-check("familleEloignee(null)", familleEloignee(null), null);
-check("familleEloignee('  ')", familleEloignee("  "), null);
-check("familleEloignee('77430')", familleEloignee("77430"), false);
-check("familleEloignee(' 77130 ')", familleEloignee(" 77130 "), false);
-check("familleEloignee('77590')", familleEloignee("77590"), true);
+const G_PROCHE = "La garde est réservée aux élèves de la 3ème à la Terminale et aux familles qui n'habitent pas la commune de l'agence de la séance.";
+const G_AGENCE = "La garde se tient dans une agence, à Champagne-sur-Seine ou à Montereau-Fault-Yonne.";
+const SANS_COMMUNE = ["Hors agence", null, undefined, "", "champagne", " Champagne", "toString", "constructor", "__proto__"];
+check("code postal de chaque agence", CODE_POSTAL_AGENCE, { Champagne: "77430", Montereau: "77130" });
+check("codePostalAgence('Champagne')", codePostalAgence("Champagne"), "77430");
+check("codePostalAgence('Montereau')", codePostalAgence("Montereau"), "77130");
+for (const a of SANS_COMMUNE) check(`codePostalAgence(${JSON.stringify(a)}) → aucune commune`, codePostalAgence(a), null);
+// familleEloignee : tableau code postal × agence de la séance
+const TABLE_ELOIGNEE = [
+  // [code postal, agence, attendu]
+  ["77430", "Champagne", false],   // famille de Champagne à Champagne
+  [" 77430 ", "Champagne", false],
+  ["77130", "Montereau", false],   // famille de Montereau à Montereau
+  ["77130", "Champagne", true],    // CAS CROISÉ : famille de Montereau à Champagne
+  ["77430", "Montereau", true],    // CAS CROISÉ : famille de Champagne à Montereau
+  ["77590", "Champagne", true],
+  ["77590", "Montereau", true],
+  ["7743", "Champagne", true],
+  [null, "Champagne", null],
+  ["  ", "Montereau", null],
+  [undefined, "Montereau", null],
+];
+for (const [cp, agence, attendu] of TABLE_ELOIGNEE) {
+  check(`familleEloignee(${JSON.stringify(cp)}, ${agence})`, familleEloignee(cp, agence), attendu);
+}
+for (const a of SANS_COMMUNE) for (const cp of ["77430", "77130", "77590", null]) {
+  check(`familleEloignee(${cp}, ${JSON.stringify(a)}) → indéterminé`, familleEloignee(cp, a), null);
+}
 for (const forfait of ["malin", "essai"]) {
+  // Tranche 3 : ouverte quel que soit le code postal (et l'agence : la capacité tranche le Hors agence).
   for (const niveau of ["3ème", "Terminale"]) {
     for (const cp of [null, "77430", "77130", "77590"]) {
-      check(`garde ${forfait} ${niveau} cp=${cp} → ouverte (Tranche 3, tout code postal)`, eligibiliteGarde(enf(niveau, forfait), cp), null);
+      for (const agence of ["Champagne", "Montereau", "Hors agence", null]) {
+        check(`garde ${forfait} ${niveau} cp=${cp} agence=${agence} → ouverte (Tranche 3)`, eligibiliteGarde(enf(niveau, forfait), cp, agence), null);
+      }
     }
   }
   for (const niveau of ["CP", "CE2", "CM1", "4ème"]) {
-    check(`garde ${forfait} ${niveau} hors agence → ouverte`, eligibiliteGarde(enf(niveau, forfait), "77590"), null);
-    check(`garde ${forfait} ${niveau} 77430 → fermée`, eligibiliteGarde(enf(niveau, forfait), "77430"), G_PROCHE);
-    check(`garde ${forfait} ${niveau} 77130 → fermée`, eligibiliteGarde(enf(niveau, forfait), "77130"), G_PROCHE);
-    check(`garde ${forfait} ${niveau} sans code postal → à renseigner`, eligibiliteGarde(enf(niveau, forfait), null), G_CP);
+    check(`garde ${forfait} ${niveau} 77590 à Champagne → ouverte`, eligibiliteGarde(enf(niveau, forfait), "77590", "Champagne"), null);
+    check(`garde ${forfait} ${niveau} 77590 à Montereau → ouverte`, eligibiliteGarde(enf(niveau, forfait), "77590", "Montereau"), null);
+    check(`garde ${forfait} ${niveau} famille de Champagne à Champagne → fermée`, eligibiliteGarde(enf(niveau, forfait), "77430", "Champagne"), G_PROCHE);
+    check(`garde ${forfait} ${niveau} famille de Montereau à Montereau → fermée`, eligibiliteGarde(enf(niveau, forfait), "77130", "Montereau"), G_PROCHE);
+    check(`garde ${forfait} ${niveau} CROISÉ famille de Montereau à Champagne → ouverte`, eligibiliteGarde(enf(niveau, forfait), "77130", "Champagne"), null);
+    check(`garde ${forfait} ${niveau} CROISÉ famille de Champagne à Montereau → ouverte`, eligibiliteGarde(enf(niveau, forfait), "77430", "Montereau"), null);
+    check(`garde ${forfait} ${niveau} sans code postal à Champagne → à renseigner`, eligibiliteGarde(enf(niveau, forfait), null, "Champagne"), G_CP);
+    for (const a of SANS_COMMUNE) {
+      check(`garde ${forfait} ${niveau} 77590 agence=${JSON.stringify(a)} → fermée (pas d'agence)`, eligibiliteGarde(enf(niveau, forfait), "77590", a), G_AGENCE);
+    }
+    check(`garde ${forfait} ${niveau} sans code postal ni agence → agence d'abord`, eligibiliteGarde(enf(niveau, forfait), null, null), G_AGENCE);
   }
 }
 for (const forfait of ["etude", "visio", "expire", null]) {
-  check(`garde forfait ${forfait} Terminale hors agence → fermée`, eligibiliteGarde(enf("Terminale", forfait), "77590"), G_FORFAIT);
-  check(`garde forfait ${forfait} CM1 hors agence → fermée`, eligibiliteGarde(enf("CM1", forfait), "77590"), G_FORFAIT);
+  check(`garde forfait ${forfait} Terminale 77590 à Champagne → fermée`, eligibiliteGarde(enf("Terminale", forfait), "77590", "Champagne"), G_FORFAIT);
+  check(`garde forfait ${forfait} CM1 croisé (77130 à Champagne) → fermée`, eligibiliteGarde(enf("CM1", forfait), "77130", "Champagne"), G_FORFAIT);
+  check(`garde forfait ${forfait} CM1 sans agence → forfait d'abord`, eligibiliteGarde(enf("CM1", forfait), "77590", null), G_FORFAIT);
 }
 
 // ─── G. signalGardePossible (D7) ───────────────────────────────────────────
 section("G. signalGardePossible");
 const OK_CTX = { carteComplete: true, voisinesMemeTypeCompletes: [true, true], seanceContigueMemeTypeConfirmee: true };
-check("T3, toutes conditions → signal", signalGardePossible(enf("2nde", "malin"), "77430", OK_CTX), true);
-check("T3 essai, toutes conditions → signal (D6)", signalGardePossible(enf("2nde", "essai"), "77430", OK_CTX), true);
-check("carte non complète → pas de signal", signalGardePossible(enf("2nde", "malin"), "77430", { ...OK_CTX, carteComplete: false }), false);
-check("une voisine du même type a de la place → pas de signal", signalGardePossible(enf("2nde", "malin"), "77430", { ...OK_CTX, voisinesMemeTypeCompletes: [true, false] }), false);
-check("aucune voisine fournie → pas de signal", signalGardePossible(enf("2nde", "malin"), "77430", { ...OK_CTX, voisinesMemeTypeCompletes: [] }), false);
-check("pas de séance contiguë confirmée → pas de signal", signalGardePossible(enf("2nde", "malin"), "77430", { ...OK_CTX, seanceContigueMemeTypeConfirmee: false }), false);
-check("T2 famille éloignée → signal", signalGardePossible(enf("5ème", "malin"), "77590", OK_CTX), true);
-check("T2 famille de Champagne → pas de signal", signalGardePossible(enf("5ème", "malin"), "77430", OK_CTX), false);
-check("T1 famille éloignée → signal", signalGardePossible(enf("CE1", "malin"), "77590", OK_CTX), true);
-check("T1 sans code postal → pas de signal", signalGardePossible(enf("CE1", "malin"), null, OK_CTX), false);
-check("forfait Étude T3 → pas de signal", signalGardePossible(enf("2nde", "etude"), "77590", OK_CTX), false);
+check("T3, toutes conditions → signal", signalGardePossible(enf("2nde", "malin"), "77430", "Champagne", OK_CTX), true);
+check("T3 essai, toutes conditions → signal (D6)", signalGardePossible(enf("2nde", "essai"), "77430", "Champagne", OK_CTX), true);
+check("T3, famille de Montereau à Montereau → signal (tout code postal)", signalGardePossible(enf("1ère", "malin"), "77130", "Montereau", OK_CTX), true);
+check("carte non complète → pas de signal", signalGardePossible(enf("2nde", "malin"), "77430", "Champagne", { ...OK_CTX, carteComplete: false }), false);
+check("une voisine du même type a de la place → pas de signal", signalGardePossible(enf("2nde", "malin"), "77430", "Champagne", { ...OK_CTX, voisinesMemeTypeCompletes: [true, false] }), false);
+check("aucune voisine fournie → pas de signal", signalGardePossible(enf("2nde", "malin"), "77430", "Champagne", { ...OK_CTX, voisinesMemeTypeCompletes: [] }), false);
+check("pas de séance contiguë confirmée → pas de signal", signalGardePossible(enf("2nde", "malin"), "77430", "Champagne", { ...OK_CTX, seanceContigueMemeTypeConfirmee: false }), false);
+check("T2 famille éloignée (77590) à Montereau → signal", signalGardePossible(enf("5ème", "malin"), "77590", "Montereau", OK_CTX), true);
+check("T2 famille de Champagne à Champagne → pas de signal", signalGardePossible(enf("5ème", "malin"), "77430", "Champagne", OK_CTX), false);
+check("T2 famille de Montereau à Montereau → pas de signal", signalGardePossible(enf("5ème", "malin"), "77130", "Montereau", OK_CTX), false);
+check("T2 CROISÉ famille de Montereau à Champagne → signal", signalGardePossible(enf("5ème", "malin"), "77130", "Champagne", OK_CTX), true);
+check("T1 CROISÉ famille de Champagne à Montereau → signal", signalGardePossible(enf("CE1", "essai"), "77430", "Montereau", OK_CTX), true);
+check("T1 CROISÉ mais carte non complète → pas de signal", signalGardePossible(enf("CE1", "malin"), "77430", "Montereau", { ...OK_CTX, carteComplete: false }), false);
+check("T1 sans code postal → pas de signal", signalGardePossible(enf("CE1", "malin"), null, "Champagne", OK_CTX), false);
+check("T1 famille éloignée sur une Visio Hors agence → pas de signal", signalGardePossible(enf("CE1", "malin"), "77590", "Hors agence", OK_CTX), false);
+check("T1 famille éloignée, agence inconnue → pas de signal", signalGardePossible(enf("CE1", "malin"), "77590", null, OK_CTX), false);
+check("forfait Étude T3 → pas de signal", signalGardePossible(enf("2nde", "etude"), "77590", "Champagne", OK_CTX), false);
 
 // ─── H. eligibiliteAutonomieVisio (D10) ────────────────────────────────────
 section("H. eligibiliteAutonomieVisio");

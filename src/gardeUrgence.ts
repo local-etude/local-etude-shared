@@ -14,53 +14,77 @@ import { ajouterJoursISO } from "./heureParis";
 import type { EnfantSimple, TypeSeance } from "./types";
 
 /**
- * Les codes postaux des communes des agences : 77430 (Champagne-sur-Seine) et
- * 77130 (Montereau-Fault-Yonne). Même liste que le site
- * (`lib/eligibilite-geo-attente-parent.ts`) et que la RPC `reserver_attente_parent`.
- *
- * ⚠️ Lu « hors des DEUX communes », comme le code en production : une famille de
- * Montereau qui vient à Champagne n'est pas « éloignée ». C'est la lecture de D7
- * retenue au lot L2 [D] ; l'autre lecture (hors de la commune de l'agence de la
- * séance) changerait aussi la RPC.
+ * Les agences d'une séance (`creneaux.agence`) et le code postal de leur
+ * commune : Champagne-sur-Seine 77430, Montereau-Fault-Yonne 77130. Une Visio
+ * « Hors agence » (intervenant chez lui) et une séance à domicile (agence NULL)
+ * n'ont pas de commune d'agence.
  */
-export const CODES_POSTAUX_AGENCES = ["77430", "77130"] as const;
+export type AgenceSeance = "Champagne" | "Montereau" | "Hors agence";
+export const CODE_POSTAL_AGENCE = { Champagne: "77430", Montereau: "77130" } as const;
 
-/** La famille habite-t-elle hors des communes des agences ? `null` si le code postal manque. */
-export function familleEloignee(codePostal: string | null | undefined): boolean | null {
+/** Code postal de la commune de l'agence de la séance, ou `null` (Hors agence, domicile, inconnue). */
+export function codePostalAgence(agenceSeance: string | null | undefined): string | null {
+  if (typeof agenceSeance !== "string") return null;
+  if (!Object.prototype.hasOwnProperty.call(CODE_POSTAL_AGENCE, agenceSeance)) return null;
+  return CODE_POSTAL_AGENCE[agenceSeance as keyof typeof CODE_POSTAL_AGENCE];
+}
+
+/**
+ * La famille est-elle « éloignée » pour cette séance ? Oui si son code postal
+ * DIFFÈRE de celui de la commune de l'agence DE LA SÉANCE (décision de Stephen du
+ * 16/11/2026, qui corrige la lecture « hors des deux communes » du § 262) : une
+ * famille de Montereau qui vient à Champagne est éloignée, et inversement.
+ * `null` si le code postal manque ou si la séance n'a pas de commune d'agence.
+ *
+ * ⚠️ La RPC `reserver_attente_parent` et `lib/eligibilite-geo-attente-parent.ts`
+ * du site appliquent encore la règle des deux communes : à aligner au lot L6.
+ */
+export function familleEloignee(
+  codePostal: string | null | undefined,
+  agenceSeance: string | null | undefined
+): boolean | null {
   const cp = codePostal?.trim();
-  if (!cp) return null;
-  return !(CODES_POSTAUX_AGENCES as readonly string[]).includes(cp);
+  const cpAgence = codePostalAgence(agenceSeance);
+  if (!cp || cpAgence === null) return null;
+  return cp !== cpAgence;
 }
 
 // ── Garde (place d'attente parent) ──────────────────────────────────────────
 
 /**
- * L'enfant a-t-il droit à la garde ? Message de refus, ou `null`.
+ * L'enfant a-t-il droit à la garde sur une séance de cette agence ? Message de
+ * refus, ou `null`.
  *
  *  · Forfait : Malin, ou essai (D6 : la garde est ouverte aux enfants en essai).
  *    Gratuite et incluse dans Malin ; aucun autre forfait n'y ouvre droit.
  *  · Tranche 3 : quel que soit le code postal (la garde remplace la deuxième
  *    séance, D7 et décision du 15/11).
- *  · Tranches 1 et 2 : seulement si la famille habite hors des communes des
- *    agences (familles éloignées, D7).
+ *  · Tranches 1 et 2 : seulement si la famille est éloignée pour l'agence de la
+ *    séance (`familleEloignee`, D7 corrigée le 16/11) ; la séance doit donc se
+ *    tenir à Champagne ou à Montereau.
  *
- * N'examine ni la séance voisine, ni la capacité de garde : voir
- * `signalGardePossible` pour l'affichage sur une carte complète.
+ * N'examine ni la séance voisine, ni la capacité de garde (une Visio « Hors
+ * agence » a 0 place) : voir `signalGardePossible` pour l'affichage sur une
+ * carte complète.
  */
 export function eligibiliteGarde(
   e: EnfantSimple,
-  codePostal: string | null | undefined
+  codePostal: string | null | undefined,
+  agenceSeance: string | null | undefined
 ): string | null {
   if (e.type_forfait !== "malin" && e.type_forfait !== "essai") {
     return "La garde est réservée au forfait Malin et à l'essai.";
   }
   if (tranche(e.niveau) === 3) return null;
-  const eloignee = familleEloignee(codePostal);
+  if (codePostalAgence(agenceSeance) === null) {
+    return "La garde se tient dans une agence, à Champagne-sur-Seine ou à Montereau-Fault-Yonne.";
+  }
+  const eloignee = familleEloignee(codePostal, agenceSeance);
   if (eloignee === null) {
     return "Renseignez votre code postal pour savoir si la garde vous est ouverte.";
   }
   if (!eloignee) {
-    return "La garde est réservée aux élèves de la 3ème à la Terminale et aux familles qui n'habitent pas la commune d'une agence.";
+    return "La garde est réservée aux élèves de la 3ème à la Terminale et aux familles qui n'habitent pas la commune de l'agence de la séance.";
   }
   return null;
 }
@@ -86,7 +110,10 @@ export type ContexteSignalGarde = {
 /**
  * Faut-il afficher « garde possible » sur cette carte ? (D7)
  *
- * Toutes les conditions sont nécessaires : enfant éligible à la garde, carte
+ * `agenceSeance` : l'agence de la carte (`creneaux.agence`).
+ *
+ * Toutes les conditions sont nécessaires : enfant éligible à la garde pour cette
+ * agence, carte
  * complète, toutes les séances voisines du même type complètes (sinon, mieux vaut
  * proposer la vraie séance d'à côté), et une séance contiguë du même type,
  * confirmée, à laquelle la garde se rattache.
@@ -94,9 +121,10 @@ export type ContexteSignalGarde = {
 export function signalGardePossible(
   e: EnfantSimple,
   codePostal: string | null | undefined,
+  agenceSeance: string | null | undefined,
   ctx: ContexteSignalGarde
 ): boolean {
-  if (eligibiliteGarde(e, codePostal) !== null) return false;
+  if (eligibiliteGarde(e, codePostal, agenceSeance) !== null) return false;
   if (!ctx.carteComplete) return false;
   if (!ctx.seanceContigueMemeTypeConfirmee) return false;
   if (ctx.voisinesMemeTypeCompletes.length === 0) return false;
