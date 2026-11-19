@@ -275,13 +275,16 @@ console.log("\n═══ C. Seuils d'annulation (regleAnnulation) ═══\n");
 
 function dansXHeures(h) {
   const d = new Date(Date.now() + h * 60 * 60 * 1000);
-  // Date ET heure en LOCAL (cohérent avec minutesAvantSeance qui reconstruit via
-  // new Date(y,m-1,d,h,min) local). Auparavant dateISO venait de toISOString()
-  // (UTC) alors que heure venait de getHours() (local) : dès qu'un instant
-  // traversait minuit UTC (ex. 10h en soirée locale), la séance était placée dans
-  // le passé → test non déterministe selon l'heure d'exécution.
-  const dateISO = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  const heure = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  // Date ET heure à l'heure MURALE DE PARIS, depuis le lot L2 (16/11/2026) :
+  // minutesAvantSeance lit désormais le créneau comme l'heure de l'agence, plus
+  // comme celle de la machine. Ce fichier tourne avec l'horloge réelle et dans le
+  // fuseau du poste ; les bornes exactes, les changements d'heure et les autres
+  // fuseaux sont dans test-regles-l2.mjs, horloge figée.
+  const mur = new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "Europe/Paris", hourCycle: "h23",
+    year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
+  }).format(d);
+  const [dateISO, heure] = mur.split(" ");
   return { dateISO, heure };
 }
 
